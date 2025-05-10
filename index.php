@@ -1,5 +1,4 @@
 <?php
-
 // Telegram Bot Token
 $botToken = "7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM";
 
@@ -9,248 +8,152 @@ $allowedGroupId = "-1002623720889";
 // Telegram API URL
 $telegramApi = "https://api.telegram.org/bot$botToken/";
 
-// Function to send messages to Telegram
-function sendMessage($chatId, $text, $parseMode = 'Markdown') {
+// Function to send Telegram message
+function sendMessage($chatId, $message, $parseMode = 'Markdown') {
     global $telegramApi;
     $url = $telegramApi . "sendMessage";
     $data = [
         'chat_id' => $chatId,
-        'text' => $text,
+        'text' => $message,
         'parse_mode' => $parseMode
     ];
     $options = [
         'http' => [
+            'header' => "Content-type: application/x-www-form-urlencoded\r\n",
             'method' => 'POST',
-            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
-            'content' => http_build_query($data)
-        ]
+            'content' => http_build_query($data),
+        ],
     ];
     $context = stream_context_create($options);
     file_get_contents($url, false, $context);
 }
 
-// Function to log errors
-function logError($message) {
-    $logFile = 'error.log';
-    $timestamp = date('Y-m-d H:i:s');
-    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
-}
-
-// Function to make GET request to external API
-function getPlayerInfo($region, $uid) {
-    $apiUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid®ion=$region";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $apiUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-
-    if ($curlError) {
-        logError("cURL error for $apiUrl: $curlError");
-        return ['error' => 'Network error', 'details' => $curlError];
+// Function to make API request
+function fetchPlayerInfo($uid, $region) {
+    $apiUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid&region=$region";
+    $response = @file_get_contents($apiUrl);
+    if ($response === FALSE) {
+        return false;
     }
-
-    if ($httpCode != 200) {
-        logError("HTTP $httpCode for $apiUrl: $response");
-        return ['error' => 'HTTP error', 'code' => $httpCode, 'response' => $response];
-    }
-
-    $data = json_decode($response, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        logError("JSON decode error for $apiUrl: " . json_last_error_msg());
-        return ['error' => 'Invalid JSON', 'response' => $response];
-    }
-
-    if (empty($data) || !isset($data['basicInfo'])) {
-        logError("No basicInfo in response for $apiUrl: $response");
-        return ['error' => 'No player data', 'response' => $response];
-    }
-
-    return $data;
-}
-
-// Function to validate region
-function isValidRegion($region) {
-    $validRegions = ['ind', 'br', 'id', 'vn', 'th', 'sg', 'my', 'ph', 'me', 'us', 'eu'];
-    return in_array($region, $validRegions);
-}
-
-// Function to validate UID
-function isValidUID($uid) {
-    // UID should be 9–10 digits based on example (7669969208)
-    return ctype_digit($uid) && strlen($uid) >= 9 && strlen($uid) <= 10;
+    return json_decode($response, true);
 }
 
 // Read incoming update from Telegram
-$content = file_get_contents("php://input");
-$update = json_decode($content, true);
+$update = json_decode(file_get_contents("php://input"), true);
 
-if (!$update) {
-    exit;
-}
+// Check if update is a message and has text
+if (isset($update['message']['text']) && isset($update['message']['chat']['id'])) {
+    $chatId = $update['message']['chat']['id'];
+    $messageText = trim($update['message']['text']);
+    $userId = $update['message']['from']['id'];
+    $username = $update['message']['from']['username'] ?? 'Unknown';
 
-// Process message
-if (isset($update['message'])) {
-    $message = $update['message'];
-    $chatId = $message['chat']['id'];
-    $text = $message['text'] ?? '';
-    $userId = $message['from']['id'];
-
-    // Check if message is from the allowed group
-    if (strval($chatId) !== $allowedGroupId) {
-        sendMessage($chatId, "🚫 This bot only works in the specified group: [Join Here](https://t.me/nr_codex)");
+    // Check if the message is from the allowed group
+    if ($chatId != $allowedGroupId) {
+        sendMessage($chatId, "❌ This bot works only in the [NR Codex](https://t.me/nr_codex) group! 🚫");
         exit;
     }
 
-    // Handle /get command
-    if (preg_match('/^\/get\s+([a-zA-Z]+)\s+(\d+)$/', $text, $matches)) {
-        $region = strtolower($matches[1]); // Convert region to lowercase
+    // Check if the message is a /get command
+    if (preg_match('/^\/get\s+([a-zA-Z]+)\s+(\d+)$/', $messageText, $matches)) {
+        $region = strtoupper($matches[1]);
         $uid = $matches[2];
 
         // Validate region
-        if (!isValidRegion($region)) {
-            sendMessage($chatId, "❌ Invalid region! Valid regions: *ind, br, id, vn, th, sg, my, ph, me, us, eu*");
+        $validRegions = ['IND', 'BR', 'ID', 'TH', 'SG', 'ME', 'EU', 'NA', 'SA', 'SEA']; // Add more if needed
+        if (!in_array($region, $validRegions)) {
+            sendMessage($chatId, "❌ Invalid region! 🌍 Please use a valid region (e.g., IND, BR, ID).");
             exit;
         }
 
-        // Validate UID
-        if (!isValidUID($uid)) {
-            sendMessage($chatId, "❌ Invalid UID! UID must be a 9–10 digit number.");
+        // Validate UID (basic check for numeric and length)
+        if (strlen($uid) < 6 || strlen($uid) > 15) {
+            sendMessage($chatId, "❌ Invalid UID! 🆔 UID must be between 6 and 15 digits.");
             exit;
         }
 
         // Fetch player info from API
-        $playerData = getPlayerInfo($region, $uid);
+        $playerData = fetchPlayerInfo($uid, $region);
 
-        if (is_array($playerData) && isset($playerData['error'])) {
-            $errorMsg = "⚠️ Failed to fetch player info: ";
-            switch ($playerData['error']) {
-                case 'Network error':
-                    $errorMsg .= "Network issue. Please try again later.";
-                    break;
-                case 'HTTP error':
-                    $errorMsg .= "API returned HTTP " . $playerData['code'];
-                    if ($playerData['code'] == 400 && !empty($playerData['response'])) {
-                        $errorDetails = json_decode($playerData['response'], true);
-                        $errorMsg .= ". Details: `" . ($errorDetails['error'] ?? 'Bad request') . "`.";
-                    } else {
-                        $errorMsg .= ". Check UID/Region or try later.";
-                    }
-                    break;
-                case 'Invalid JSON':
-                    $errorMsg .= "Invalid API response. Contact bot admin.";
-                    break;
-                case 'No player data':
-                    $errorMsg .= "No player found for UID $uid in region $region.";
-                    break;
-                default:
-                    $errorMsg .= "Unknown error. Try again later.";
-            }
-            sendMessage($chatId, $errorMsg);
+        // Check for API errors
+        if ($playerData === false) {
+            sendMessage($chatId, "⚠️ Failed to fetch data from the API. Please try again later or check the UID/region. 😔");
             exit;
         }
 
-        $basicInfo = $playerData['basicInfo'];
+        // Check if API returned an error
+        if (isset($playerData['error'])) {
+            sendMessage($chatId, "❌ Error: " . $playerData['error'] . " 😢");
+            exit;
+        }
+
+        // Extract relevant data
+        $basicInfo = $playerData['basicInfo'] ?? [];
         $clanInfo = $playerData['clanBasicInfo'] ?? [];
         $socialInfo = $playerData['socialInfo'] ?? [];
         $creditScore = $playerData['creditScoreInfo'] ?? [];
         $petInfo = $playerData['petInfo'] ?? [];
         $diamondCost = $playerData['diamondCostRes'] ?? [];
-        $profileInfo = $playerData['profileInfo'] ?? [];
 
-        // Format response using Markdown with emojis and sections
+        // Format response using Markdown with emojis
         $response = "🎮 *Free Fire Player Info* 🎮\n\n";
+        $response .= "🆔 *Account ID*: `{$basicInfo['accountId']}`\n";
+        $response .= "📛 *Nickname*: {$basicInfo['nickname']}\n";
+        $response .= "🌍 *Region*: {$basicInfo['region']}\n";
+        $response .= "🎚️ *Level*: {$basicInfo['level']}\n";
+        $response .= "👍 *Likes*: {$basicInfo['liked']}\n";
+        $response .= "🏆 *BR Rank*: {$basicInfo['rank']} (Points: {$basicInfo['rankingPoints']})\n";
+        $response .= "🔫 *CS Rank*: {$basicInfo['csRank']} (Points: {$basicInfo['csRankingPoints']})\n";
+        $response .= "📅 *Last Login*: " . date('Y-m-d H:i:s', $basicInfo['lastLoginAt']) . "\n";
+        $response .= "🔥 *Experience*: {$basicInfo['exp']}\n";
+        $response .= "🏅 *Badges*: {$basicInfo['badgeCnt']}\n";
 
-        // Basic Info Section
-        $response .= "📋 *Basic Info* 📋\n";
-        $response .= "👤 *Nickname*: `" . ($basicInfo['nickname'] ?? 'N/A') . "`\n";
-        $response .= "🆔 *Account ID*: `" . ($basicInfo['accountId'] ?? 'N/A') . "`\n";
-        $response .= "🌍 *Region*: `" . ($basicInfo['region'] ?? 'N/A') . "`\n";
-        $response .= "📈 *Level*: `" . ($basicInfo['level'] ?? 'N/A') . "`\n";
-        $response .= "❤️ *Likes*: `" . ($basicInfo['liked'] ?? 'N/A') . "`\n";
-        $response .= "🏆 *BR Rank*: `" . ($basicInfo['rank'] ?? 'N/A') . "` (Points: " . ($basicInfo['rankingPoints'] ?? 'N/A') . ")\n";
-        $response .= "🎯 *CS Rank*: `" . ($basicInfo['csRank'] ?? 'N/A') . "` (Points: " . ($basicInfo['csRankingPoints'] ?? 'N/A') . ")\n";
-        $response .= "🔝 *Max BR Rank*: `" . ($basicInfo['maxRank'] ?? 'N/A') . "`\n";
-        $response .= "🎖️ *Max CS Rank*: `" . ($basicInfo['csMaxRank'] ?? 'N/A') . "`\n";
-        $response .= "🎫 *Account Type*: `" . ($basicInfo['accountType'] ?? 'N/A') . "`\n";
-        $response .= "🏅 *Badge Count*: `" . ($basicInfo['badgeCnt'] ?? 'N/A') . "`\n";
-        $response .= "🛡️ *Badge ID*: `" . ($basicInfo['badgeId'] ?? 'N/A') . "`\n";
-        $response .= "📅 *Created At*: `" . date('Y-m-d H:i:s', $basicInfo['createAt'] ?? time()) . "`\n";
-        $response .= "⏰ *Last Login*: `" . date('Y-m-d H:i:s', $basicInfo['lastLoginAt'] ?? time()) . "`\n";
-        $response .= "🔥 *EXP*: `" . ($basicInfo['exp'] ?? 'N/A') . "`\n";
-        $response .= "🎨 *Pin ID*: `" . ($basicInfo['pinId'] ?? 'N/A') . "`\n";
-        $response .= "🏆 *Title*: `" . ($basicInfo['title'] ?? 'N/A') . "`\n";
-        $response .= "📦 *Release Version*: `" . ($basicInfo['releaseVersion'] ?? 'N/A') . "`\n";
-        $response .= "📜 *Season ID*: `" . ($basicInfo['seasonId'] ?? 'N/A') . "`\n";
-        $response .= "👁️ *Show BR Rank*: `" . ($basicInfo['showBrRank'] ? 'Yes' : 'No') . "`\n";
-        $response .= "👁️ *Show CS Rank*: `" . ($basicInfo['showCsRank'] ? 'Yes' : 'No') . "`\n";
-        $response .= "👁️ *Show Rank*: `" . ($basicInfo['showRank'] ? 'Yes' : 'No') . "`\n";
-        $response .= "🔗 *External Icon*: `" . ($basicInfo['externalIconInfo']['showType'] ?? 'N/A') . " (" . ($basicInfo['externalIconInfo']['status'] ?? 'N/A') . ")`\n";
-
-        // Clan Info Section
+        // Clan Info
         if (!empty($clanInfo)) {
-            $response .= "\n🏰 *Clan Info* 🏰\n";
-            $response .= "📛 *Clan Name*: `" . ($clanInfo['clanName'] ?? 'N/A') . "`\n";
-            $response .= "🆔 *Clan ID*: `" . ($clanInfo['clanId'] ?? 'N/A') . "`\n";
-            $response .= "🔝 *Clan Level*: `" . ($clanInfo['clanLevel'] ?? 'N/A') . "`\n";
-            $response .= "👥 *Members*: `" . ($clanInfo['memberNum'] ?? 'N/A') . "/" . ($clanInfo['capacity'] ?? 'N/A') . "`\n";
-            $response .= "👑 *Captain ID*: `" . ($clanInfo['captainId'] ?? 'N/A') . "`\n";
+            $response .= "\n👥 *Clan Info* 👥\n";
+            $response .= "🏰 *Clan Name*: {$clanInfo['clanName']}\n";
+            $response .= "👑 *Clan Level*: {$clanInfo['clanLevel']}\n";
+            $response .= "👥 *Members*: {$clanInfo['memberNum']}/{$clanInfo['capacity']}\n";
         }
 
-        // Social Info Section
+        // Social Info
         if (!empty($socialInfo)) {
             $response .= "\n🌐 *Social Info* 🌐\n";
-            $response .= "🚻 *Gender*: `" . ($socialInfo['gender'] ?? 'N/A') . "`\n";
-            $response .= "🗣️ *Language*: `" . ($socialInfo['language'] ?? 'N/A') . "`\n";
-            $response .= "🏆 *Rank Show*: `" . ($socialInfo['rankShow'] ?? 'N/A') . "`\n";
-            $response .= "✍️ *Signature*: `" . ($socialInfo['signature'] ?? 'N/A') . "`\n";
+            $response .= "🚻 *Gender*: {$socialInfo['gender']}\n";
+            $response .= "🗣️ *Language*: {$socialInfo['language']}\n";
+            $response .= "📜 *Signature*: {$socialInfo['signature']}\n";
         }
 
-        // Credit Score Section
+        // Credit Score
         if (!empty($creditScore)) {
-            $response .= "\n⭐ *Credit Score* ⭐\n";
-            $response .= "📊 *Score*: `" . ($creditScore['creditScore'] ?? 'N/A') . "`\n";
-            $response .= "⏳ *Summary End Time*: `" . date('Y-m-d H:i:s', $creditScore['periodicSummaryEndTime'] ?? time()) . "`\n";
-            $response .= "🎁 *Reward State*: `" . ($creditScore['rewardState'] ?? 'N/A') . "`\n";
+            $response .= "\n📊 *Credit Score* 📊\n";
+            $response .= "⭐ *Score*: {$creditScore['creditScore']}\n";
+            $response .= "🎁 *Reward State*: {$creditScore['rewardState']}\n";
         }
 
-        // Diamond Cost Section
-        if (!empty($diamondCost)) {
-            $response .= "\n💎 *Diamond Cost* 💎\n";
-            $response .= "💰 *Diamond Cost*: `" . ($diamondCost['diamondCost'] ?? 'N/A') . "`\n";
-        }
-
-        // Pet Info Section
+        // Pet Info
         if (!empty($petInfo)) {
             $response .= "\n🐾 *Pet Info* 🐾\n";
-            $response .= "🦁 *Pet ID*: `" . ($petInfo['id'] ?? 'N/A') . "`\n";
-            $response .= "🔼 *Level*: `" . ($petInfo['level'] ?? 'N/A') . "`\n";
-            $response .= "🔥 *EXP*: `" . ($petInfo['exp'] ?? 'N/A') . "`\n";
-            $response .= "✅ *Selected*: `" . ($petInfo['isSelected'] ? 'Yes' : 'No') . "`\n";
-            $response .= "🛠️ *Selected Skill ID*: `" . ($petInfo['selectedSkillId'] ?? 'N/A') . "`\n";
-            $response .= "🎨 *Skin ID*: `" . ($petInfo['skinId'] ?? 'N/A') . "`\n";
+            $response .= "🐶 *Pet ID*: {$petInfo['id']}\n";
+            $response .= "🎚️ *Pet Level*: {$petInfo['level']}\n";
+            $response .= "🔧 *Selected Skill*: {$petInfo['selectedSkillId']}\n";
         }
 
-        // Profile Info Section
-        if (!empty($profileInfo)) {
-            $response .= "\n🎭 *Profile Info* 🎭\n";
-            $response .= "🖼️ *Avatar ID*: `" . ($profileInfo['avatarId'] ?? 'N/A') . "`\n";
-            $response .= "👗 *Clothes*: `" . (implode(', ', $profileInfo['clothes'] ?? ['N/A'])) . "`\n";
-            $response .= "⚡ *Equipped Skills*: `" . (implode(', ', $profileInfo['equipedSkills'] ?? ['N/A'])) . "`\n";
-            $response .= "✅ *Selected*: `" . ($profileInfo['isSelected'] ? 'Yes' : 'No') . "`\n";
-            $response .= "🌟 *Selected Awaken*: `" . ($profileInfo['isSelectedAwaken'] ? 'Yes' : 'No') . "`\n";
-            $response .= "🔓 *Unlock Time*: `" . date('Y-m-d H:i:s', $profileInfo['unlockTime'] ?? time()) . "`\n";
+        // Diamond Cost
+        if (!empty($diamondCost)) {
+            $response .= "\n💎 *Diamond Cost* 💎\n";
+            $response .= "💰 *Cost*: {$diamondCost['diamondCost']}\n";
         }
 
-        $response .= "\n🔗 *Fetched by NR Codex Bot* | [Join Us](https://t.me/nr_codex)";
+        $response .= "\n🔗 *Requested by*: @$username\n";
+        $response .= "📢 Join us at [NR Codex](https://t.me/nr_codex)!";
 
+        // Send response
         sendMessage($chatId, $response);
+
     } else {
-        sendMessage($chatId, "ℹ️ *Usage*: `/get <region> <UID>`\n*Example*: `/get ind 7669969208`\n\n🔍 Valid regions: *ind, br, id, vn, th, sg, my, ph, me, us, eu*");
+        // Invalid command format
+        sendMessage($chatId, "❌ Invalid command! 📜 Use: `/get <region> <UID>`\nExample: `/get IND 1234567890`");
     }
 }
-
 ?>
