@@ -44,7 +44,80 @@ function getPlayerInfo($region, $uid) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     $response = curl_exec($ch);
-    $httpCode = curl>GetPlayerInfo($region, $uid);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($curlError) {
+        logError("cURL error for $apiUrl: $curlError");
+        return ['error' => 'Network error', 'details' => $curlError];
+    }
+
+    if ($httpCode != 200) {
+        logError("HTTP $httpCode for $apiUrl: $response");
+        return ['error' => 'HTTP error', 'code' => $httpCode, 'response' => $response];
+    }
+
+    $data = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        logError("JSON decode error for $apiUrl: " . json_last_error_msg());
+        return ['error' => 'Invalid JSON', 'response' => $response];
+    }
+
+    if (empty($data) || !isset($data['basicInfo'])) {
+        logError("No basicInfo in response for $apiUrl: $response");
+        return ['error' => 'No player data', 'response' => $response];
+    }
+
+    return $data;
+}
+
+// Function to validate region
+function isValidRegion($region) {
+    $validRegions = ['ind', 'br', 'id', 'vn', 'th', 'sg', 'my', 'ph', 'me', 'us', 'eu'];
+    return in_array($region, $validRegions);
+}
+
+// Read incoming update from Telegram
+$content = file_get_contents("php://input");
+$update = json_decode($content, true);
+
+if (!$update) {
+    exit;
+}
+
+// Process message
+if (isset($update['message'])) {
+    $message = $update['message'];
+    $chatId = $message['chat']['id'];
+    $text = $message['text'] ?? '';
+    $userId = $message['from']['id'];
+
+    // Check if message is from the allowed group
+    if (strval($chatId) !== $allowedGroupId) {
+        sendMessage($chatId, "🚫 This bot only works in the specified group: [Join Here](https://t.me/nr_codex)");
+        exit;
+    }
+
+    // Handle /get command
+    if (preg_match('/^\/get\s+([a-zA-Z]+)\s+(\d+)$/', $text, $matches)) {
+        $region = strtolower($matches[1]); // Convert region to lowercase
+        $uid = $matches[2];
+
+        // Validate region
+        if (!isValidRegion($region)) {
+            sendMessage($chatId, "❌ Invalid region! Valid regions: *ind, br, id, vn, th, sg, my, ph, me, us, eu*");
+            exit;
+        }
+
+        // Validate UID
+        if (!ctype_digit($uid)) {
+            sendMessage($chatId, "❌ Invalid UID! UID must be numeric.");
+            exit;
+        }
+
+        // Fetch player info from API
+        $playerData = getPlayerInfo($region, $uid);
 
         if (is_array($playerData) && isset($playerData['error'])) {
             $errorMsg = "⚠️ Failed to fetch player info: ";
@@ -108,11 +181,11 @@ function getPlayerInfo($region, $uid) {
         // Clan Info Section
         if (!empty($clanInfo)) {
             $response .= "\n🏰 *Clan Info* 🏰\n";
-            $response .= "📛 *Clan Name*: `" . ($clanInfo['clanName'] ?? 'N/A') . "`\n";
-            $response .= "🆔 *Clan ID*: `" . ($clanInfo['clanId'] ?? 'N/A') . "`\n";
-            $response .= "🔝 *Clan Level*: `" . ($clanInfo['clanLevel'] ?? 'N/A') . "`\n";
-            $response .= "👥 *Members*: `" . ($clanInfo['memberNum'] ?? 'N/A') . "/" . ($clanInfo['capacity'] ?? 'N/A') . "`\n";
-            $response .= "👑 *Captain ID*: `" . ($clanInfo['captainId'] ?? 'N/A') . "`\n";
+164            $response .= "📛 *Clan Name*: `" . ($clanInfo['clanName'] ?? 'N/A') . "`\n";
+165            $response .= "🆔 *Clan ID*: `" . ($clanInfo['clanId'] ?? 'N/A') . "`\n";
+166            $response .= "🔝 *Clan Level*: `" . ($clanInfo['clanLevel'] ?? 'N/A') . "`\n";
+167            $response .= "👥 *Members*: `" . ($clanInfo['memberNum'] ?? 'N/A') . "/" . ($clanInfo['capacity'] ?? 'N/A') . "`\n";
+168            $response .= "👑 *Captain ID*: `" . ($clanInfo['captainId'] ?? 'N/A') . "`\n";
         }
 
         // Social Info Section
