@@ -1,135 +1,224 @@
 <?php
 
 // Telegram Bot Token
-define('BOT_TOKEN', '7735767619:AAE0f8qQ8Mj3KEXKkeN80m5gX94NiA6xdsA');
+$botToken = "7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM";
+$apiUrl = "https://api.telegram.org/bot$botToken/";
+
 // Allowed Group ID
-define('ALLOWED_GROUP_ID', '-1002623720889');
-// Telegram Channel Link
-define('CHANNEL_LINK', 'https://t.me/nr_codex');
-// API Endpoint
-define('API_URL', 'https://nr-codex-likeapi.vercel.app/like?server_name={server}&uid={uid}');
-// Owner Contact
-define('OWNER_CONTACT', '@nilay_vii');
+$allowedGroupId = "-1002623720889";
 
-// Set webhook (optional, for production)
-// file_get_contents("https://api.telegram.org/bot" . BOT_TOKEN . "/setWebhook?url=" . urlencode("https://yourdomain.com/index.php"));
-
-// Function to send Telegram message
-function sendMessage($chat_id, $text, $message_id = null, $parse_mode = 'Markdown') {
-    $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/sendMessage";
-    $params = [
-        'chat_id' => $chat_id,
+// Function to send messages to Telegram
+function sendMessage($chatId, $text, $parseMode = 'Markdown', $replyToMessageId = null) {
+    global $apiUrl;
+    $url = $apiUrl . "sendMessage?" . http_build_query([
+        'chat_id' => $chatId,
         'text' => $text,
-        'parse_mode' => $parse_mode
-    ];
-    if ($message_id) {
-        $params['reply_to_message_id'] = $message_id;
-    }
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    return json_decode($response, true);
+        'parse_mode' => $parseMode,
+        'reply_to_message_id' => $replyToMessageId
+    ]);
+    file_get_contents($url);
 }
 
-// Function to make GET request to external API
-function callLikeAPI($server, $uid) {
-    $url = str_replace(['{server}', '{uid}'], [$server, $uid], API_URL);
+// Function to send photos to Telegram
+function sendPhoto($chatId, $photoUrl, $caption = '', $parseMode = 'Markdown') {
+    global $apiUrl;
+    $url = $apiUrl . "sendPhoto?" . http_build_query([
+        'chat_id' => $chatId,
+        'photo' => $photoUrl,
+        'caption' => $caption,
+        'parse_mode' => $parseMode
+    ]);
+    file_get_contents($url);
+}
+
+// Function to make API requests
+function makeApiRequest($url) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     
-    if ($http_code !== 200 || !$response) {
+    if ($httpCode !== 200 || !$response) {
         return false;
     }
     
     return json_decode($response, true);
 }
 
-// Simple in-memory storage simulation for daily likes
-$like_history = []; // Format: [uid => [date => count]]
+// Function to format timestamp to readable date
+function formatTimestamp($timestamp) {
+    return date('F j, Y', $timestamp);
+}
 
-// Process incoming updates
-$update = json_decode(file_get_contents('php://input'), true);
+// Get incoming update from Telegram
+$update = json_decode(file_get_contents("php://input"), true);
 
+// Process only message updates
 if (isset($update['message'])) {
     $message = $update['message'];
-    $chat_id = $message['chat']['id'];
-    $text = $message['text'] ?? '';
-    $message_id = $message['message_id'];
-    $user_id = $message['from']['id'];
-
+    $chatId = $message['chat']['id'];
+    $text = isset($message['text']) ? $message['text'] : '';
+    $messageId = $message['message_id'];
+    
     // Check if the message is from the allowed group
-    if ((string)$chat_id !== ALLOWED_GROUP_ID) {
-        sendMessage($chat_id, "🚫 This bot is exclusive to our group! Join us to use it! 😊", $message_id);
+    if (strval($chatId) !== $allowedGroupId) {
+        sendMessage($chatId, "This bot can only be used in the official group: https://t.me/nr_codex");
         exit;
     }
-
-    // Handle /like command
-    if (preg_match('/^\/like\s+(\w+)\s+(\d+)$/', $text, $matches)) {
-        $region = $matches[1];
-        $uid = $matches[2];
-
+    
+    // Process commands
+    if (strpos($text, '/get') === 0) {
+        $params = array_filter(explode(' ', $text));
+        array_shift($params); // Remove command
+        
         // Validate input
-        if (empty($region) || empty($uid)) {
-            sendMessage($chat_id, "❌ Invalid format! Use: `/like <region> <UID>`\nExample: `/like NA 1234567890` 📝", $message_id);
+        if (count($params) !== 2) {
+            sendMessage($chatId, "Invalid command format. Use: `/get <region> <UID>`", 'Markdown', $messageId);
             exit;
         }
-
-        // Check daily like limit (simulated)
-        $today = date('Y-m-d');
-        if (isset($like_history[$uid][$today]) && $like_history[$uid][$today] >= 100) {
-            sendMessage($chat_id, "⛔ Max likes (100) reached for UID `$uid` today! Try again after daily reset. ⏰", $message_id);
+        
+        $region = strtoupper(trim($params[0]));
+        $uid = trim($params[1]);
+        
+        // Validate region (example regions, adjust as needed)
+        $validRegions = ['IND', 'BR', 'US', 'EU']; // Add more as per API
+        if (!in_array($region, $validRegions)) {
+            sendMessage($chatId, "Invalid region. Supported regions: " . implode(', ', $validRegions), 'Markdown', $messageId);
             exit;
         }
-
-        // Call external API
-        $api_response = callLikeAPI($region, $uid);
-
-        if ($api_response === false) {
-            sendMessage($chat_id, "⚠️ API error! Please try again later or contact " . OWNER_CONTACT . " 😔", $message_id);
+        
+        // Validate UID (assuming it's numeric)
+        if (!is_numeric($uid)) {
+            sendMessage($chatId, "Invalid UID. UID must be numeric.", 'Markdown', $messageId);
             exit;
         }
-
-        // Parse API response
-        $status = $api_response['status'] ?? 0;
-        if ($status !== 2) {
-            sendMessage($chat_id, "❌ Failed to send like! Check region/UID or try again later. 🔄", $message_id);
+        
+        // Make API request for player info
+        $playerInfoUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid®ion=$region";
+        $playerInfo = makeApiRequest($playerInfoUrl);
+        
+        if (!$playerInfo) {
+            sendMessage($chatId, "API error. Please try again later or contact OWNER @nilay_vii", 'Markdown', $messageId);
             exit;
         }
-
-        // Extract player information
-        $nickname = $api_response['PlayerNickname'] ?? 'Unknown';
-        $likes_before = $api_response['LikesbeforeCommand'] ?? 0;
-        $likes_after = $api_response['LikesafterCommand'] ?? 0;
-        $likes_given = $api_response['LikesGivenByAPI'] ?? 0;
-
-        // Update like history (simulated)
-        if (!isset($like_history[$uid])) {
-            $like_history[$uid] = [];
+        
+        // Extract data
+        $basicInfo = $playerInfo['basicInfo'] ?? [];
+        $clanInfo = $playerInfo['clanBasicInfo'] ?? [];
+        $creditScoreInfo = $playerInfo['creditScoreInfo'] ?? [];
+        $diamondCost = $playerInfo['diamondCostRes'] ?? [];
+        $petInfo = $playerInfo['petInfo'] ?? [];
+        $profileInfo = $playerInfo['profileInfo'] ?? [];
+        $socialInfo = $playerInfo['socialInfo'] ?? [];
+        
+        // Format message
+        $response = "📋 *Basic Information*\n";
+        $response .= "Account ID: `{$basicInfo['accountId']}`\n";
+        $response .= "Nickname: {$basicInfo['nickname']}\n";
+        $response .= "Region: {$basicInfo['region']} 🇮🇳\n";
+        $response .= "Level: {$basicInfo['level']} 🎮\n";
+        $response .= "Experience (EXP): " . number_format($basicInfo['exp']) . " 🥳\n";
+        $response .= "Likes Received: " . number_format($basicInfo['liked']) . " ❤️\n";
+        $response .= "Created At: " . formatTimestamp($basicInfo['createAt']) . " 🕒\n";
+        $response .= "Last Login: " . formatTimestamp($basicInfo['lastLoginAt']) . " ⏰\n";
+        $response .= "Release Version: {$basicInfo['releaseVersion']} 🚀\n";
+        $response .= "Season ID: {$basicInfo['seasonId']} 🏆\n";
+        $response .= "Title ID: {$basicInfo['title']} 🏅\n";
+        $response .= "Pin ID: {$basicInfo['pinId']} 📍\n";
+        $response .= "Badge ID: {$basicInfo['badgeId']} (Count: {$basicInfo['badgeCnt']}) 🎖️\n\n";
+        
+        $response .= "🏅 *Rank Details*\n";
+        $response .= "Current Rank: {$basicInfo['rank']}\n";
+        $response .= "Max Rank Achieved: {$basicInfo['maxRank']}\n";
+        $response .= "Ranking Points: " . number_format($basicInfo['rankingPoints']) . "\n";
+        $response .= "CS Rank: {$basicInfo['csRank']}\n";
+        $response .= "CS Max Rank: {$basicInfo['csMaxRank']}\n";
+        $response .= "CS Ranking Points: {$basicInfo['csRankingPoints']}\n";
+        $response .= "Show Ranks: Battle Royale (BR), Clash Squad (CS)\n\n";
+        
+        $response .= "🛡️ *Clan Information*\n";
+        $response .= "Clan Name: {$clanInfo['clanName']}\n";
+        $response .= "Clan ID: {$clanInfo['clanId']}\n";
+        $response .= "Clan Level: {$clanInfo['clanLevel']} 🥉\n";
+        $response .= "Captain ID: {$clanInfo['captainId']} 👑\n";
+        $response .= "Members: {$clanInfo['memberNum']}/{$clanInfo['capacity']} (Full capacity!)\n";
+        $response .= "Credit Score: {$creditScoreInfo['creditScore']} 🌟\n";
+        $response .= "Reward State: {$creditScoreInfo['rewardState']} 🎁\n";
+        $response .= "Periodic Summary End Time: " . formatTimestamp($creditScoreInfo['periodicSummaryEndTime']) . " 📅\n\n";
+        
+        // Placeholder for clan members (add API here if available)
+        $response .= "👥 *Clan Members*\n";
+        $response .= "Member list not available. Contact OWNER @nilay_vii for updates.\n\n";
+        
+        $response .= "💎 *Diamond on Account*\n";
+        $response .= "Diamond: {$diamondCost['diamondCost']} 💎\n\n";
+        
+        $response .= "🐾 *Pet Information*\n";
+        $response .= "Pet ID: {$petInfo['id']}\n";
+        $response .= "Level: {$petInfo['level']} 🐾\n";
+        $response .= "Experience: {$petInfo['exp']}\n";
+        $response .= "Selected: " . ($petInfo['isSelected'] ? 'Yes ✅' : 'No') . "\n";
+        $response .= "Selected Skill ID: {$petInfo['selectedSkillId']} ⚡\n";
+        $response .= "Skin ID: {$petInfo['skinId']} 🎨\n\n";
+        
+        $response .= "👟 *Equipped Skills* (IDs)\n";
+        $skills = array_chunk($profileInfo['equipedSkills'], 4);
+        foreach ($skills as $index => $skillSet) {
+            $response .= "Slot " . ($index + 1) . ": " . implode(', ', $skillSet) . "\n";
         }
-        $like_history[$uid][$today] = ($like_history[$uid][$today] ?? 0) + $likes_given;
-
-        // Format response with emojis
-        $response_text = "🎮 *Player Information* 🎮\n\n";
-        $response_text .= "👤 Nickname: `$nickname`\n";
-        $response_text .= "🆔 UID: `$uid`\n";
-        $response_text .= "❤️ Likes Before: `$likes_before`\n";
-        $response_text .= "🚀 Likes After: `$likes_after`\n";
-        $response_text .= "🎁 Likes Given by Bot: `$likes_given`\n\n";
-        $response_text .= "🙌 Thanks for using *Nr Codex Like Bot*! 😍\n";
-        $response_text .= "📢 Join our channel: [Nr Codex](" . CHANNEL_LINK . ") 🌟";
-
-        // Send response
-        sendMessage($chat_id, $response_text, $message_id);
-    } else {
-        // Invalid command format
-        sendMessage($chat_id, "❓ Use: `/like <region> <UID>`\nExample: `/like NA 1234567890` 📝\nJoin our channel: [Nr Codex](" . CHANNEL_LINK . ") 🌟", $message_id);
+        $response .= "Selected: " . ($profileInfo['isSelected'] ? 'Yes ✅' : 'No') . "\n\n";
+        
+        $response .= "🌐 *Social Information*\n";
+        $response .= "Account ID: {$socialInfo['accountId']}\n";
+        $response .= "Gender: {$socialInfo['gender']} " . ($socialInfo['gender'] === 'Gender_MALE' ? '♂️' : '♀️') . "\n";
+        $response .= "Language: {$socialInfo['language']} 🇬🇧\n";
+        $response .= "Rank Show Preference: {$socialInfo['rankShow']} 🏆\n";
+        $response .= "Signature: `{$socialInfo['signature']}`\n\n";
+        
+        // Send player info
+        sendMessage($chatId, $response, 'Markdown', $messageId);
+        
+        // Send thank you message
+        sendMessage($chatId, "Thanks for using Nr Codex Info Bot!", 'Markdown', $messageId);
+        
+        // Fetch and send banner image
+        $bannerUrl = "https://aditya-banner-v3op.onrender.com/banner-image?uid=$uid®ion=$region";
+        $bannerResponse = makeApiRequest($bannerUrl);
+        if ($bannerResponse && isset($bannerResponse['imageUrl'])) {
+            sendPhoto($chatId, $bannerResponse['imageUrl'], "Banner Image", 'Markdown');
+        } else {
+            sendMessage($chatId, "Failed to fetch banner image. Please try again later or contact OWNER @nilay_vii", 'Markdown', $messageId);
+        }
+        
+        // Fetch and send images for various IDs
+        $imageIds = [
+            'Pin ID' => $basicInfo['pinId'],
+            'Skin ID' => $petInfo['skinId'],
+            'Selected Skill ID' => $petInfo['selectedSkillId'],
+            'Pet ID' => $petInfo['id'],
+            'Clan ID' => $clanInfo['clanId'],
+            'Captain ID' => $clanInfo['captainId'],
+            'Title ID' => $basicInfo['title']
+        ];
+        
+        foreach ($imageIds as $label => $id) {
+            $imageUrl = "https://aditya-image-v3op.onrender.com/image?id=$id";
+            $imageResponse = makeApiRequest($imageUrl);
+            if ($imageResponse && isset($imageResponse['imageUrl'])) {
+                sendPhoto($chatId, $imageResponse['imageUrl'], "$label Image", 'Markdown');
+            } else {
+                sendMessage($chatId, "Failed to fetch $label image. Please try again later or contact OWNER @nilay_vii", 'Markdown', $messageId);
+            }
+        }
+        
+        // Note: The 4th API for outfit image was mentioned but not provided. If available, add similar logic here.
+    }
+    
+    // Handle /like command (placeholder, as no API for sending likes was provided)
+    if (strpos($text, '/like') === 0) {
+        sendMessage($chatId, "Like feature not implemented yet. Contact OWNER @nilay_vii for updates.", 'Markdown', $messageId);
     }
 }
 
