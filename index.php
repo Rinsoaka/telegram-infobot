@@ -181,11 +181,11 @@ if (isset($update['message'])) {
         // Clan Info Section
         if (!empty($clanInfo)) {
             $response .= "\n🏰 *Clan Info* 🏰\n";
-164            $response .= "📛 *Clan Name*: `" . ($clanInfo['clanName'] ?? 'N/A') . "`\n";
-165            $response .= "🆔 *Clan ID*: `" . ($clanInfo['clanId'] ?? 'N/A') . "`\n";
-166            $response .= "🔝 *Clan Level*: `" . ($clanInfo['clanLevel'] ?? 'N/A') . "`\n";
-167            $response .= "👥 *Members*: `" . ($clanInfo['memberNum'] ?? 'N/A') . "/" . ($clanInfo['capacity'] ?? 'N/A') . "`\n";
-168            $response .= "👑 *Captain ID*: `" . ($clanInfo['captainId'] ?? 'N/A') . "`\n";
+            $response .= "📛 *Clan Name*: `" . ($clanInfo['clanName'] ?? 'N/A') . "`\n";
+            $response .= "🆔 *Clan ID*: `" . ($clanInfo['clanId'] ?? 'N/A') . "`\n";
+            $response .= "🔝 *Clan Level*: `" . ($clanInfo['clanLevel'] ?? 'N/A') . "`\n";
+            $response .= "👥 *Members*: `" . ($clanInfo['memberNum'] ?? 'N/A') . "/" . ($clanInfo['capacity'] ?? 'N/A') . "`\n";
+            $response .= "👑 *Captain ID*: `" . ($clanInfo['captainId'] ?? 'N/A') . "`\n";
         }
 
         // Social Info Section
