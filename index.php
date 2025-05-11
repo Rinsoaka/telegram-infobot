@@ -34,107 +34,6 @@ function sendMessage($chatId, $message, $messageId, $parseMode = 'Markdown', $re
         'http' => [
             'header' => "Content-type: application/x-www-form-urlencoded\r\n",
             'method' => 'POST',
-            'content' => http_build_query($data),
-        ],
-    ];
-    $context = stream_context_create($options);
-    file_get_contents($url, false, $context);
-}
-
-// Function to make API request
-function fetchPlayerInfo($uid, $region) {
-    $apiUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid&region=$region";
-    $response = @file_get_contents($apiUrl);
-    if ($response === false) {
-        return false;
-    }
-    return json_decode($response, true);
-}
-
-// Read incoming update from Telegram
-$update = json_decode(file_get_contents("php://input"), true);
-
-// Check if update is a message and has text
-if (isset($update['message']['text']) && isset($update['message']['chat']['id'])) {
-    $chatId = $update['message']['chat']['id'];
-    $messageText = trim($update['message']['text']);
-    $messageId = $update['message']['message_id'];
-    $userId = $update['message']['from']['id'];
-    $username = $update['message']['from']['username'] ?? 'Unknown';
-
-    // Check if the message is from the allowed group
-    if ($chatId != $allowedGroupId) {
-        sendMessage($chatId, "❌ This bot works only in the [NR Codex](https://t.me/nr_codex) group! 🚫", $messageId);
-        exit;
-    }
-
-    // Check if the message is a /get command
-    if (preg_match('/^\/get\s+([a-zA-Z]+)\s+(\d+)$/', $messageText, $matches)) {
-        $region = strtoupper($matches[1]);
-        $uid = $matches[2];
-
-        // Validate region
-        $validRegions = ['IND', 'BR', 'ID', 'TH', 'SG', 'ME', 'EU', 'NA', 'SA', 'SEA'];
-        if (!in_array($region, $validRegions)) {
-            sendMessage($chatId, "❌ Invalid region! 🌍 Please use a valid region (e.g., IND, BR, ID).", $messageId);
-            exit;
-        }
-
-        // Validate UID
-        if (strlen($uid) < 6 || strlen($uid) > 15) {
-            sendMessage($chatId, "❌ Invalid UID! 🆔 UID must be between 6 and 15 digits.", $messageId);
-            exit;
-        }
-
-        // Fetch player info from API
-        $playerData = fetchPlayerInfo($uid, $region);
-
-        // Check for API errors
-        if ($playerData === false) {
-            sendMessage($chatId, "�
-
-System: It looks like the script was cut off again. I'll provide the complete, corrected `index.php` script, ensuring no syntax errors, particularly addressing the `Parse error: syntax error, unexpected integer "7599565801", expecting ")"` issue. The error likely stems from an issue with the `$telegramApi` variable construction or a nearby syntax error around line 95. I'll also verify the script for proper parentheses, string concatenation, and overall syntax.
-
-### Corrected `index.php`
-Below is the complete, verified script with all features (reply-to-message, Markdown escaping, inline buttons, group restriction, etc.) and fixes to eliminate the syntax error.
-
-```php
-<?php
-// Telegram Bot Token
-$botToken = "7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM";
-
-// Allowed Group ID
-$allowedGroupId = "-1002623720889";
-
-// Telegram API URL
-$telegramApi = "https://api.telegram.org/bot" . $botToken . "/";
-
-// Function to escape Markdown special characters
-function escapeMarkdown($text) {
-    $specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
-    foreach ($specialChars as $char) {
-        $text = str_replace($char, '\\' . $char, $text);
-    }
-    return $text;
-}
-
-// Function to send Telegram message with optional inline keyboard and reply to message
-function sendMessage($chatId, $message, $messageId, $parseMode = 'Markdown', $replyMarkup = null) {
-    global $telegramApi;
-    $url = $telegramApi . "sendMessage";
-    $data = [
-        'chat_id' => $chatId,
-        'text' => $message,
-        'parse_mode' => $parseMode,
-        'reply_to_message_id' => $messageId
-    ];
-    if ($replyMarkup) {
-        $data['reply_markup'] = json_encode($replyMarkup);
-    }
-    $options = [
-        'http' => [
-            'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-            'method' => 'POST',
             'content' => http_build_query($data)
         ]
     ];
@@ -144,7 +43,7 @@ function sendMessage($chatId, $message, $messageId, $parseMode = 'Markdown', $re
 
 // Function to make API request
 function fetchPlayerInfo($uid, $region) {
-    $apiUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid&region=$region";
+    $apiUrl = "https://aditya-info-v3op.onrender.com/player-info?uid=$uid®ion=$region";
     $response = @file_get_contents($apiUrl);
     if ($response === false) {
         return false;
