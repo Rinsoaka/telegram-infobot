@@ -1,185 +1,244 @@
 <?php
-// Telegram Bot Token 🌟
-define('BOT_TOKEN', '7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM');
-define('API_URL', 'https://api.telegram.org/bot'.BOT_TOKEN.'/');
 
-// Allowed Group ID 🔒
-define('ALLOWED_GROUP_ID', '-1002623720889');
+// Telegram Bot Token
+$botToken = "7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM"; // Your provided bot token
+$telegramApi = "https://api.telegram.org/bot$botToken/";
 
-// Channel Link 📢
-define('CHANNEL_LINK', 'https://t.me/nr_codex');
-
-// Function to send HTTP requests 🚀
-function sendRequest($method, $params) {
-    $url = API_URL . $method;
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+// Function to send messages to Telegram with optional inline keyboard
+function sendMessage($chatId, $message, $botToken, $replyMarkup = null) {
+    $url = "https://api.telegram.org/bot$botToken/sendMessage";
+    $data = [
+        'chat_id' => $chatId,
+        'text' => $message,
+        'parse_mode' => 'HTML' // Use HTML for formatting
+    ];
+    
+    if ($replyMarkup) {
+        $data['reply_markup'] = json_encode($replyMarkup);
+    }
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $response = curl_exec($ch);
     curl_close($ch);
-    return json_decode($response);
+    return $response;
 }
 
-// Function to fetch player info from external API 🌐
-function getPlayerInfo($uid, $region) {
-    $url = "https://aditya-info-v3op.onrender.com/player-info?uid={$uid}®ion={$region}";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
+// Function to fetch player info from the API
+function fetchPlayerInfo($uid) {
+    $apiUrl = "https://nr-codex-info1.vercel.app/player-info?region=IND&uid=$uid";
+    $ch = curl_init($apiUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Set timeout to avoid hanging
     $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+    
+    if ($httpCode !== 200 || !$response) {
+        return false;
+    }
     return json_decode($response, true);
 }
 
-// Function to send message 💬
-function sendMessage($chat_id, $text, $reply_to_message_id = null, $reply_markup = null) {
-    $params = [
-        'chat_id' => $chat_id,
-        'text' => $text,
-        'parse_mode' => 'Markdown',
+// Function to convert Unix timestamp to formatted date
+function formatDate($timestamp) {
+    return date("d F Y \a\t H:i:s", $timestamp);
+}
+
+// Function to format BR rank
+function formatBrRank($rank, $points) {
+    $ranks = [
+        [4200, "Grand Master 🏆"],
+        [3700, "Master 🌟"],
+        [3200, "Diamond I 💎"],
+        [3000, "Diamond II 💎"],
+        [2800, "Diamond III 💎"],
+        [2600, "Platinum I 🥈"],
+        [2400, "Platinum II 🥈"],
+        [2200, "Platinum III 🥈"],
+        [2000, "Gold I 🥇"],
+        [1800, "Gold II 🥇"],
+        [1600, "Gold III 🥇"],
+        [1400, "Silver I 🥉"],
+        [1200, "Silver II 🥉"],
+        [1000, "Silver III 🥉"],
+        [0, "Bronze 🛡️"]
     ];
-    if ($reply_to_message_id) {
-        $params['reply_to_message_id'] = $reply_to_message_id;
+    foreach ($ranks as [$threshold, $name]) {
+        if ($points >= $threshold) {
+            return "$name ($points)";
+        }
     }
-    if ($reply_markup) {
-        $params['reply_markup'] = json_encode($reply_markup);
-    }
-    return sendRequest('sendMessage', $params);
+    return "Unranked ($points) ⚠️";
 }
 
-// Webhook handler 🎮
-$update = json_decode(file_get_contents('php://input'), true);
-
-if (isset($update['message'])) {
-    $message = $update['message'];
-    $chat_id = $message['chat']['id'];
-    $text = $message['text'] ?? '';
-    $message_id = $message['message_id'];
-
-    // Check if the message is from the allowed group 🔐
-    if ($chat_id != ALLOWED_GROUP_ID) {
-        sendMessage($chat_id, "❌ *Access Denied!* 🚫 This bot is exclusive to the specified group! 😎", $message_id);
-        exit;
+// Function to format CS rank
+function formatCsRank($rank, $points) {
+    $stars = floor($points / 10); // Assuming 10 points per star
+    $ranks = [
+        [300, "Master ($stars Star) 🌟"],
+        [200, "Ace ($stars Star) 🏅"],
+        [100, "Platinum ($stars Star) 💎"],
+        [50, "Gold ($stars Star) 🥇"],
+        [0, "Bronze ($stars Star) 🛡️"]
+    ];
+    foreach ($ranks as [$threshold, $name]) {
+        if ($points >= $threshold) {
+            return $name;
+        }
     }
+    return "Unranked ($points) ⚠️";
+}
 
-    // Check if the message is a command 📝
-    if (strpos($text, '/get') === 0) {
-        $parts = explode(' ', $text);
-        if (count($parts) !== 3) {
-            sendMessage($chat_id, "⚠️ *Oops!* 😕 Invalid format! Use: `/get <region> <UID>`\nExample: `/get IND 1234567890` 📋", $message_id);
-            exit;
-        }
+// Function to get skill names
+function getSkillName($skillId) {
+    $skills = [
+        16 => "Notora (P) 🚀",
+        2403 => "Kelly The Swift (P) ⚡",
+        8 => "Dimitri (A) 🛠️",
+        6501 => "Sonia (P) 🌸",
+        // Add more skill mappings as needed
+    ];
+    return $skills[$skillId] ?? "Unknown ($skillId) ❓";
+}
 
-        $region = strtoupper($parts[1]);
-        $uid = $parts[2];
+// Function to get pet name
+function getPetName($petId) {
+    $pets = [
+        1300000111 => "Rockie 🐶",
+        // Add more pet mappings as needed
+    ];
+    return $pets[$petId] ?? "Unknown ❓";
+}
 
-        // Validate region and UID 🕵️‍♂️
-        $valid_regions = ['IND', 'BR', 'ID', 'TH', 'SG', 'ME', 'VN', 'TW', 'PK', 'BD', 'MY', 'PH', 'NP', 'LK', 'KH', 'MM', 'LA', 'MN'];
-        if (!in_array($region, $valid_regions)) {
-            sendMessage($chat_id, "⚠️ *Invalid Region!* 🌍 Valid regions: `" . implode(', ', $valid_regions) . "` 😤", $message_id);
-            exit;
-        }
-        if (!is_numeric($uid) || strlen($uid) < 6) {
-            sendMessage($chat_id, "⚠️ *Invalid UID!* 🔢 UID must be a number with at least 6 digits! 😬", $message_id);
-            exit;
-        }
+// Function to format the API response
+function formatResponse($data, $uid, $userMessage) {
+    $account = $data['AccountInfo'];
+    $profile = $data['AccountProfileInfo'];
+    $guild = $data['GuildInfo'];
+    $captain = $data['captainBasicInfo'];
+    $credit = $data['creditScoreInfo'];
+    $pet = $data['petInfo'];
+    $social = $data['socialinfo'];
 
-        // Fetch player info from API 🚀
-        $player_info = getPlayerInfo($uid, $region);
+    // Format skills
+    $equippedSkills = array_map('getSkillName', array_filter($profile['EquippedSkills'], function($id) {
+        return $id > 100 || in_array($id, [1, 2, 3]); // Filter relevant skill IDs
+    }));
+    $equippedSkills = array_unique($equippedSkills);
+    $skillsText = implode(", ", $equippedSkills);
 
-        if (!$player_info || isset($player_info['error'])) {
-            sendMessage($chat_id, "❌ *Error!* 😭 Unable to fetch player info. Check UID/Region or try again later! 🔄", $message_id);
-            exit;
-        }
+    // Enhanced formatting with user message and emojis
+    $message = "<b>🔥 Player Info for: <code>$userMessage</code> 🔥</b>\n";
+    $message .= "<b>━━━━━━━━━ ACCOUNT INFO ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ ACCOUNT BASIC INFO</b> 👤\n";
+    $message .= "• Name: {$account['AccountName']} 😎\n";
+    $message .= "• UID: $uid 🆔\n";
+    $message .= "• Level: {$account['AccountLevel']} (Exp: {$account['AccountEXP']}) 📊\n";
+    $message .= "• Region: {$account['AccountRegion']} 🌍\n";
+    $message .= "• Likes: {$account['AccountLikes']} ❤️\n";
+    $message .= "• Honor Score: {$credit['creditScore']} 🏅\n";
+    $message .= "• Celebrity Status: " . ($account['AccountType'] == 1 ? "False 🚫" : "True ✅") . "\n";
+    $message .= "• Evo Access Badge: " . ($account['AccountBPID'] ? "Active ✅" : "Inactive 🚫") . "\n";
+    $message .= "• Title: " . ($account['Title'] ?? "Not Found 🚫") . " 🎖️\n";
+    $message .= "• Signature: " . ($social['AccountSignature'] ? str_replace("\n", "\n    ", $social['AccountSignature']) : "Not Set 🚫") . " 📝\n\n";
 
-        // Parse player info 🧠
-        $basic_info = $player_info['basicInfo'] ?? [];
-        $clan_info = $player_info['clanBasicInfo'] ?? [];
-        $credit_info = $player_info['creditScoreInfo'] ?? [];
-        $diamond_info = $player_info['diamondCostRes'] ?? [];
-        $pet_info = $player_info['petInfo'] ?? [];
-        $profile_info = $player_info['profileInfo'] ?? [];
-        $social_info = $player_info['socialInfo'] ?? [];
+    $message .= "<b>━━━━━━━━━ ACCOUNT ACTIVITY ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ ACCOUNT ACTIVITY</b> 🎮\n";
+    $message .= "• Most Recent OB: {$account['ReleaseVersion']} 🆕\n";
+    $message .= "• Fire Pass: " . ($account['AccountType'] == 1 ? "Basic 📜" : "Premium 💎") . "\n";
+    $message .= "• Current BP Badges: {$account['AccountBPBadges']} 🏷️\n";
+    $message .= "• BR Rank: " . formatBrRank($account['BrMaxRank'], $account['BrRankPoint']) . "\n";
+    $message .= "• CS Rank: " . formatCsRank($account['CsMaxRank'], $account['CsRankPoint']) . "\n";
+    $message .= "• Created At: " . formatDate($account['AccountCreateTime']) . " 🕒\n";
+    $message .= "• Last Login: " . formatDate($account['AccountLastLogin']) . " 🕒\n\n";
 
-        // Format response with tons of emojis! 🎉
-        $response = "🎮 *Free Fire Player Info* 🎮\n\n";
-        $response .= "🌟 *Basic Info* 📋\n";
-        $response .= "- Nickname: `{$basic_info['nickname']}` 😎\n";
-        $response .= "- Account ID: `{$basic_info['accountId']}` 🔢\n";
-        $response .= "- Region: `{$basic_info['region']}` 🌍\n";
-        $response .= "- Level: `{$basic_info['level']}` 📈\n";
-        $response .= "- Likes: `{$basic_info['liked']}` ❤️👍\n";
-        $response .= "- BR Rank: `{$basic_info['rank']}` (Max: `{$basic_info['maxRank']}`) 🏆\n";
-        $response .= "- CS Rank: `{$basic_info['csRank']}` (Max: `{$basic_info['csMaxRank']}`) 🎯\n";
-        $response .= "- EXP: `{$basic_info['exp']}` 💪\n";
-        $response .= "- Last Login: `" . date('Y-m-d H:i:s', $basic_info['lastLoginAt']) . "` ⏰\n";
-        $response .= "- Created At: `" . date('Y-m-d H:i:s', $basic_info['createAt']) . "` 📅\n";
-        $response .= "- Title ID: `{$basic_info['title']}` 🏅\n";
-        $response .= "- Badge Count: `{$basic_info['badgeCnt']}` 🎖️\n";
+    $message .= "<b>━━━━━━━━━ ACCOUNT OVERVIEW ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ ACCOUNT OVERVIEW</b> 👕\n";
+    $message .= "• Avatar ID: {$account['AccountAvatarId']} 🖼️\n";
+    $message .= "• Banner ID: {$account['AccountBannerId']} 🏳️\n";
+    $message .= "• Pin ID: Default 📍\n";
+    $message .= "• Equipped Skills: $skillsText 🎯\n";
+    $message .= "• Equipped Gun ID: {$account['EquippedWeapon'][0]} 🔫\n";
+    $message .= "• Equipped Animation ID: {$account['EquippedWeapon'][1]} 🎬\n";
+    $message .= "• Transform Animation ID: Not Equipped 🚫\n";
+    $message .= "• Outfits: Graphically Presented Below! 😉 ✨\n\n";
 
-        if (!empty($clan_info)) {
-            $response .= "\n🛡️ *Clan Info* ⚔️\n";
-            $response .= "- Clan Name: `{$clan_info['clanName']}` 🏰\n";
-            $response .= "- Clan ID: `{$clan_info['clanId']}` 🔢\n";
-            $response .= "- Clan Level: `{$clan_info['clanLevel']}` 📈\n";
-            $response .= "- Members: `{$clan_info['memberNum']}/{$clan_info['capacity']}` 👥\n";
-            $response .= "- Captain ID: `{$clan_info['captainId']}` 👑\n";
-        }
+    $message .= "<b>━━━━━━━━━ PET DETAILS ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ PET DETAILS</b> 🐾\n";
+    $message .= "• Equipped?: " . ($pet['isSelected'] ? "Yes ✅" : "No 🚫") . "\n";
+    $message .= "• Pet Name: " . getPetName($pet['id']) . "\n";
+    $message .= "• Pet Type: " . getPetName($pet['id']) . "\n";
+    $message .= "• Pet Exp: {$pet['exp']} 📈\n";
+    $message .= "• Pet Level: {$pet['level']} 🌟\n\n";
 
-        if (!empty($credit_info)) {
-            $response .= "\n⭐ *Credit Score* ✨\n";
-            $response .= "- Score: `{$credit_info['creditScore']}` 🌟\n";
-            $response .= "- Reward State: `{$credit_info['rewardState']}` 🎁\n";
-        }
+    $message .= "<b>━━━━━━━━━ GUILD INFO ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ GUILD INFO</b> 🛡️\n";
+    $message .= "• Guild Name: {$guild['GuildName']} 🏰\n";
+    $message .= "• Guild ID: {$guild['GuildID']} 🆔\n";
+    $message .= "• Guild Level: {$guild['GuildLevel']} 📊\n";
+    $message .= "• Live Members: {$guild['GuildMember']} 👥\n";
+    $message .= "➤ Leader Info:\n";
+    $message .= "    • Leader Name: {$captain['nickname']} 👑\n";
+    $message .= "    • Leader UID: {$captain['accountId']} 🆔\n";
+    $message .= "    • Leader Level: {$captain['level']} (Exp: {$captain['exp']}) 📊\n";
+    $message .= "    • Leader Created At: " . formatDate($captain['createAt']) . " 🕒\n";
+    $message .= "    • Leader Last Login: " . formatDate($captain['lastLoginAt']) . " 🕒\n";
+    $message .= "    • Leader Title: " . ($captain['title'] ?? "Not Found 🚫") . " 🎖️\n";
+    $message .= "    • Leader Current BP Badges: {$captain['badgeCnt']} 🏷️\n";
+    $message .= "    • Leader BR: " . formatBrRank($captain['maxRank'], $captain['rankingPoints']) . "\n";
+    $message .= "    • Leader CS: " . formatCsRank($captain['csMaxRank'], $captain['csRankingPoints']) . "\n\n";
 
-        if (!empty($diamond_info)) {
-            $response .= "\n💎 *Diamond Cost* 💰\n";
-            $response .= "- Diamond Cost: `{$diamond_info['diamondCost']}` 💎\n";
-        }
+    $message .= "<b>━━━━━━━━━ PUBLIC CRAFTLAND MAPS ━━━━━━━━━</b>\n";
+    $message .= "<b>≫ PUBLIC CRAFTLAND MAPS</b> 🗺️\n";
+    $message .= "• Not Available 🚫\n\n";
+    $message .= "<b>➤ JOIN US</b> 🤝\n";
 
-        if (!empty($pet_info)) {
-            $response .= "\n🐾 *Pet Info* 🐶\n";
-            $response .= "- Pet ID: `{$pet_info['id']}` 🐕\n";
-            $response .= "- Level: `{$pet_info['level']}` 📈\n";
-            $response .= "- EXP: `{$pet_info['exp']}` 💪\n";
-            $response .= "- Selected: `" . ($pet_info['isSelected'] ? 'Yes' : 'No') . "` ✅\n";
-            $response .= "- Skill ID: `{$pet_info['selectedSkillId']}` ⚡\n";
-            $response .= "- Skin ID: `{$pet_info['skinId']}` 🎨\n";
-        }
-
-        if (!empty($profile_info)) {
-            $response .= "\n👤 *Profile Info* 😎\n";
-            $response .= "- Avatar ID: `{$profile_info['avatarId']}` 🖼️\n";
-            $response .= "- Clothes: `" . implode(', ', $profile_info['clothes']) . "` 👗\n";
-            $response .= "- Skills: `" . implode(', ', $profile_info['equipedSkills']) . "` ⚡\n";
-            $response .= "- Selected: `" . ($profile_info['isSelected'] ? 'Yes' : 'No') . "` ✅\n";
-            $response .= "- Awaken: `" . ($profile_info['isSelectedAwaken'] ? 'Yes' : 'No') . "` 🌟\n";
-        }
-
-        if (!empty($social_info)) {
-            $response .= "\n🌐 *Social Info* 📱\n";
-            $response .= "- Gender: `{$social_info['gender']}` 🚻\n";
-            $response .= "- Language: `{$social_info['language']}` 🗣️\n";
-            $response .= "- Rank Show: `{$social_info['rankShow']}` 🏆\n";
-            $response .= "- Signature: `{$social_info['signature']}` ✍️\n";
-        }
-
-        // Inline button for channel 📢
-        $reply_markup = [
-            'inline_keyboard' => [
-                [
-                    [
-                        'text' => 'Join Our Channel! 🚀🎉',
-                        'url' => CHANNEL_LINK
-                    ]
-                ]
+    // Inline keyboard markup
+    $replyMarkup = [
+        'inline_keyboard' => [
+            [
+                ['text' => 'TELEGRAM CHANNEL ⚡', 'url' => 'https://t.me/nr_codex'],
+                ['text' => 'TELEGRAM GROUP 🔥', 'url' => 'https://t.me/nr_codex_likegroup']
+            ],
+            [
+                ['text' => 'INSTAGRAM 🔥', 'url' => 'https://www.instagram.com/nr_codex?igsh=MjZlZWo2cGd3bDVk'],
+                ['text' => 'YOUTUBE ⚡', 'url' => 'https://youtube.com/@nr_codex06?si=5pbP9qsDLfT4uTgf']
             ]
-        ];
+        ]
+    ];
 
-        // Send response 💬
-        sendMessage($chat_id, $response, $message_id, $reply_markup);
-    }
+    return ['message' => $message, 'replyMarkup' => $replyMarkup];
 }
+
+// Main logic to handle Telegram updates
+$update = json_decode(file_get_contents("php://input"), true);
+
+// Check if the update contains a message
+if (isset($update['message'])) {
+    $chatId = $update['message']['chat']['id'];
+    $text = $update['message']['text'];
+
+    // Check if the message starts with "Get" followed by a UID
+    if (preg_match('/^Get (\d+)$/', $text, $matches)) {
+        $uid = $matches[1];
+        $playerData = fetchPlayerInfo($uid);
+
+        if ($playerData && isset($playerData['AccountInfo'])) {
+            // Format the response with the user's message
+            $response = formatResponse($playerData, $uid, $text);
+            sendMessage($chatId, $response['message'], $botToken, $response['replyMarkup']);
+        } else {
+            sendMessage($chatId, "⚠️ <b>Error:</b> Unable to fetch player data for UID $uid. Please check the UID or try again later. 🚫", $botToken);
+        }
+    } else {
+        sendMessage($chatId, "⚠️ <b>Invalid Format:</b> Please use the format: <code>Get <UID></code> 📝", $botToken);
+    }
+} else {
+    // Handle non-message updates or invalid requests
+    http_response_code(200); // Telegram expects a 200 OK response
+}
+
 ?>
