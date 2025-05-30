@@ -101,7 +101,7 @@ function formatResponse($data, $uid, $userMessage) {
     // Build response
     $message = "<b>Player Info for: <code>$userMessage</code></b>\n\n";
     
-    $message .= "╭─≫ ʙᴀsɪᴄ ɪɴғᴏ ≪\n";
+    $message .= "Account Info ≪\n";
     $message .= "│ 👤 Name: " . ($account['AccountName'] ?? "N/A") . "\n";
     $message .= "│ 🆔 UID: $uid\n";
     $message .= "│ 🎮 Level: " . ($account['AccountLevel'] ?? "N/A") . "\n";
@@ -159,7 +159,7 @@ function formatResponse($data, $uid, $userMessage) {
     $message .= "├─ 🎯 CS Points: " . ($captain['csRankingPoints'] ?? "N/A") . "\n";
     $message .= "╰───────────────\n\n";
 
-    $message .= "╭─≫ ᴏᴡɴᴇʀs ≪\n";
+    $message .= "Bot Made By ≪\n";
     $message .= "├─ 🎮 NR Codex\n";
     $message .= "╰───────────────\n\n";
 
