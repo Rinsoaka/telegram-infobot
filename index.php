@@ -63,25 +63,15 @@ function formatDate($timestamp) {
     return $timestamp ? date("d F Y \a\t H:i:s", $timestamp) : "N/A";
 }
 
-// Function to format BR rank (raw API values)
-function formatBrRank($rank, $points) {
+// Function to format rank (raw API values)
+function formatRank($rank, $points) {
     if (!isset($rank, $points)) return "N/A";
     return "$rank ($points)";
 }
 
-// Function to format CS rank (raw API values)
-function formatCsRank($rank, $points) {
-    if (!isset($rank, $points)) return "N/A";
-    return "$rank ($points)";
-}
-
-// Function to get pet name (unchanged, as no customization requested for pets)
+// Function to get pet name (raw API ID)
 function getPetName($petId) {
-    $pets = [
-        1300000111 => "Rockie",
-        // Add more pet mappings as needed
-    ];
-    return $pets[$petId] ?? "Unknown";
+    return $petId ?? "N/A";
 }
 
 // Function to format the API response
@@ -99,69 +89,88 @@ function formatResponse($data, $uid, $userMessage) {
         ? implode(", ", $profile['EquippedSkills'])
         : "N/A";
 
-    // Formatting without ━━━━━━━━━
-    $message = "<b>Player Info for: <code>$userMessage</code></b>\n";
-    $message .= "<b>≫ ACCOUNT BASIC INFO</b>\n";
-    $message .= "• Name: " . ($account['AccountName'] ?? "N/A") . "\n";
-    $message .= "• UID: $uid\n";
-    $message .= "• Level: " . ($account['AccountLevel'] ?? "N/A") . " (Exp: " . ($account['AccountEXP'] ?? "N/A") . ")\n";
-    $message .= "• Region: " . ($account['AccountRegion'] ?? "N/A") . "\n";
-    $message .= "• Likes: " . ($account['AccountLikes'] ?? "N/A") . "\n";
-    $message .= "• Honor Score: " . ($credit['creditScore'] ?? "N/A") . "\n";
-    $message .= "• Celebrity Status: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "False" : ($account['AccountType'] ? "True" : "N/A")) . "\n";
-    $message .= "• Evo Access Badge: " . (isset($account['AccountBPID']) && $account['AccountBPID'] ? "Active" : "Inactive") . "\n";
-    $message .= "• Title: " . ($account['Title'] ?? "Not Found") . "\n";
-    $message .= "• Signature: " . ($social['AccountSignature'] ? str_replace("\n", "\n    ", $social['AccountSignature']) : "N/A") . "\n\n";
+    // Format outfits
+    $outfitsText = !empty($profile['EquippedOutfit']) 
+        ? implode(", ", $profile['EquippedOutfit'])
+        : "N/A";
 
-    $message .= "<b>≫ ACCOUNT ACTIVITY</b>\n";
-    $message .= "• Most Recent OB: " . ($account['ReleaseVersion'] ?? "N/A") . "\n";
-    $message .= "• Fire Pass: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "Basic" : ($account['AccountType'] ? "Premium" : "N/A")) . "\n";
-    $message .= "• Current BP Badges: " . ($account['AccountBPBadges'] ?? "N/A") . "\n";
-    $message .= "• BR Rank: " . formatBrRank($account['BrMaxRank'] ?? null, $account['BrRankPoint'] ?? null) . "\n";
-    $message .= "• CS Rank: " . formatCsRank($account['CsMaxRank'] ?? null, $account['CsRankPoint'] ?? null) . "\n";
-    $message .= "• Created At: " . formatDate($account['AccountCreateTime'] ?? null) . "\n";
-    $message .= "• Last Login: " . formatDate($account['AccountLastLogin'] ?? null) . "\n\n";
+    // Get current timestamp in IST
+    $ist = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+    $timestamp = $ist->format('Y-m-d H:i:s');
 
-    $message .= "<b>≫ ACCOUNT OVERVIEW</b>\n";
-    $message .= "• Avatar ID: " . ($account['AccountAvatarId'] ?? "N/A") . "\n";
-    $message .= "• Banner ID: " . ($account['AccountBannerId'] ?? "N/A") . "\n";
-    $message .= "• Pin ID: " . ($account['AccountBannerId'] ? "Default" : "N/A") . "\n";
-    $message .= "• Equipped Skills: $skillsText\n";
-    $message .= "• Equipped Gun ID: " . ($account['EquippedWeapon'][0] ?? "N/A") . "\n";
-    $message .= "• Equipped Animation ID: " . ($account['EquippedWeapon'][1] ?? "N/A") . "\n";
-    $message .= "• Transform Animation ID: " . ($account['EquippedWeapon'][2] ?? "Not Equipped") . "\n";
-    $message .= "• Outfits: " . (!empty($profile['EquippedOutfit']) ? "Graphically Presented Below!" : "N/A") . "\n\n";
+    // Build response
+    $message = "<b>Player Info for: <code>$userMessage</code></b>\n\n";
+    
+    $message .= "╭─≫ ʙᴀsɪᴄ ɪɴғᴏ ≪\n";
+    $message .= "│ 👤 Name: " . ($account['AccountName'] ?? "N/A") . "\n";
+    $message .= "│ 🆔 UID: $uid\n";
+    $message .= "│ 🎮 Level: " . ($account['AccountLevel'] ?? "N/A") . "\n";
+    $message .= "│ 🌍 Region: " . ($account['AccountRegion'] ?? "N/A") . "\n";
+    $message .= "│ 👍 Likes: " . ($account['AccountLikes'] ?? "N/A") . "\n";
+    $message .= "│ 🏅 Honor Score: " . ($credit['creditScore'] ?? "N/A") . "\n";
+    $message .= "│ 🌟 Celebrity: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "False" : ($account['AccountType'] ? "True" : "N/A")) . "\n";
+    $message .= "│ 🔥 Elite Pass: " . (isset($account['AccountBPID']) && $account['AccountBPID'] ? "Yes" : "No") . "\n";
+    $message .= "│ 🎭 Title: " . ($account['Title'] ?? "N/A") . "\n";
+    $message .= "│ ✍️ Signature: " . ($social['AccountSignature'] ? str_replace("\n", "\n│     ", $social['AccountSignature']) : "N/A") . "\n";
+    $message .= "╰───────────────\n\n";
 
-    $message .= "<b>≫ PET DETAILS</b>\n";
-    $message .= "• Equipped?: " . (isset($pet['isSelected']) && $pet['isSelected'] ? "Yes" : "No") . "\n";
-    $message .= "• Pet Name: " . getPetName($pet['id'] ?? null) . "\n";
-    $message .= "• Pet Type: " . getPetName($pet['id'] ?? null) . "\n";
-    $message .= "• Pet Exp: " . ($pet['exp'] ?? "N/A") . "\n";
-    $message .= "• Pet Level: " . ($pet['level'] ?? "N/A") . "\n\n";
+    $message .= "╭─≫ Account Activity ≪\n";
+    $message .= "├─ 🔄 OB: " . ($account['ReleaseVersion'] ?? "N/A") . "\n";
+    $message .= "├─ 🎫 Fire Pass: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "Free" : ($account['AccountType'] ? "Premium" : "N/A")) . "\n";
+    $message .= "├─ 🏆 BP Badges: " . ($account['AccountBPBadges'] ?? "N/A") . "\n";
+    $message .= "├─ 🆔 BP ID: " . ($account['AccountBPID'] ?? "N/A") . "\n";
+    $message .= "├─ 📈 BR Rank: " . formatRank($account['BrMaxRank'] ?? null, $account['BrRankPoint'] ?? null) . "\n";
+    $message .= "├─ 🎯 CS Points: " . ($account['CsRankPoint'] ?? "N/A") . "\n";
+    $message .= "├─ 📅 Created: " . formatDate($account['AccountCreateTime'] ?? null) . "\n";
+    $message .= "├─ ⏳ Last Login: " . formatDate($account['AccountLastLogin'] ?? null) . "\n";
+    $message .= "╰───────────────\n\n";
 
-    $message .= "<b>≫ GUILD INFO</b>\n";
-    $message .= "• Guild Name: " . ($guild['GuildName'] ?? "N/A") . "\n";
-    $message .= "• Guild ID: " . ($guild['GuildID'] ?? "N/A") . "\n";
-    $message .= "• Guild Level: " . ($guild['GuildLevel'] ?? "N/A") . "\n";
-    $message .= "• Live Members: " . ($guild['GuildMember'] ?? "N/A") . "\n";
-    $message .= "➤ Leader Info:\n";
-    $message .= "    • Leader Name: " . ($captain['nickname'] ?? "N/A") . "\n";
-    $message .= "    • Leader UID: " . ($captain['accountId'] ?? "N/A") . "\n";
-    $message .= "    • Leader Level: " . ($captain['level'] ?? "N/A") . " (Exp: " . ($captain['exp'] ?? "N/A") . ")\n";
-    $message .= "    • Leader Created At: " . formatDate($captain['createAt'] ?? null) . "\n";
-    $message .= "    • Leader Last Login: " . formatDate($captain['lastLoginAt'] ?? null) . "\n";
-    $message .= "    • Leader Title: " . ($captain['title'] ?? "Not Found") . "\n";
-    $message .= "    • Leader Current BP Badges: " . ($captain['badgeCnt'] ?? "N/A") . "\n";
-    $message .= "    • Leader BR: " . formatBrRank($captain['maxRank'] ?? null, $captain['rankingPoints'] ?? null) . "\n";
-    $message .= "    • Leader CS: " . formatCsRank($captain['csMaxRank'] ?? null, $captain['csRankingPoints'] ?? null) . "\n\n";
+    $message .= "╭─≫ Overview ≪\n";
+    $message .= "├─ 📌 Pin ID: " . ($account['AccountBannerId'] ? "Default" : "N/A") . "\n";
+    $message .= "├─ 👕 Outfits: $outfitsText\n";
+    $message .= "├─ ⚡ Skills: $skillsText\n";
+    $message .= "├─ 🔫 Guns: " . ($account['EquippedWeapon'][0] ?? "N/A") . "\n";
+    $message .= "╰───────────────\n\n";
 
-    $message .= "<b>≫ PUBLIC CRAFTLAND MAPS</b>\n";
-    $message .= "• Not Available\n\n";
-    $message .= "<b>➤ JOIN US</b>\n";
-    $message .= "• TELEGRAM GROUP: https://t.me/nr_codex_likegroup\n";
-    $message .= "• INSTAGRAM: https://www.instagram.com/nr_codex?igsh=MjZlZWo2cGd3bDVk\n";
+    $message .= "╭─≫ Pet Info ≪\n";
+    $message .= "├─ 🐾 Equipped: " . (isset($pet['isSelected']) && $pet['isSelected'] ? "Yes" : "No") . "\n";
+    $message .= "├─ 🐕 Name: " . getPetName($pet['id'] ?? null) . "\n";
+    $message .= "├─ 🦴 Type: " . getPetName($pet['id'] ?? null) . "\n";
+    $message .= "├─ 🎖️ EXP: " . ($pet['exp'] ?? "N/A") . "\n";
+    $message .= "├─ 🔼 Level: " . ($pet['level'] ?? "N/A") . "\n";
+    $message .= "╰───────────────\n\n";
 
-    // Inline keyboard markup for Telegram Channel and YouTube
+    $message .= "╭─≫ Guild ≪\n";
+    $message .= "├─ 🏰 Name: " . ($guild['GuildName'] ?? "N/A") . "\n";
+    $message .= "├─ 🆔 ID: " . ($guild['GuildID'] ?? "N/A") . "\n";
+    $message .= "├─ 🎖️ Level: " . ($guild['GuildLevel'] ?? "N/A") . "\n";
+    $message .= "├─ 👥 Members: " . ($guild['GuildMember'] ?? "N/A") . "\n";
+    $message .= "╰───────────────\n\n";
+
+    $message .= "╭─≫ Leader ≪\n";
+    $message .= "├─ 👑 Name: " . ($captain['nickname'] ?? "N/A") . "\n";
+    $message .= "├─ 🆔 UID: " . ($captain['accountId'] ?? "N/A") . "\n";
+    $message .= "├─ 🎮 Level: " . ($captain['level'] ?? "N/A") . "\n";
+    $message .= "├─ 📅 Created At: " . formatDate($captain['createAt'] ?? null) . "\n";
+    $message .= "├─ ⏳ Last Login: " . formatDate($captain['lastLoginAt'] ?? null) . "\n";
+    $message .= "├─ 🎭 Title: " . ($captain['title'] ?? "N/A") . "\n";
+    $message .= "├─ 🏆 Badges: " . ($captain['badgeCnt'] ?? "N/A") . "\n";
+    $message .= "├─ 📈 BR Points: " . formatRank($captain['maxRank'] ?? null, $captain['rankingPoints'] ?? null) . "\n";
+    $message .= "├─ 🎯 CS Points: " . ($captain['csRankingPoints'] ?? "N/A") . "\n";
+    $message .= "╰───────────────\n\n";
+
+    $message .= "╭─≫ ᴏᴡɴᴇʀs ≪\n";
+    $message .= "├─ 🎮 NR Codex\n";
+    $message .= "╰───────────────\n\n";
+
+    $message .= "╭─≫ Join us ≪\n";
+    $message .= "├─ 📱 TELEGRAM GROUP: https://t.me/nr_codex_likegroup\n";
+    $message .= "├─ 📸 INSTAGRAM: https://www.instagram.com/nr_codex?igsh=MjZlZWo2cGd3bDVk\n";
+    $message .= "╰───────────────\n\n";
+
+    $message .= "🕒 Fetched at (IST): $timestamp IST";
+
+    // Inline keyboard markup
     $replyMarkup = [
         'inline_keyboard' => [
             [
