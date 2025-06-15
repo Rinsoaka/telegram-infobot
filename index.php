@@ -1,228 +1,182 @@
 <?php
+// inde.php
 
-// Telegram Bot Token
-$botToken = "7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM"; // Your provided bot token
-$telegramApi = "https://api.telegram.org/bot$botToken/";
+// Set Telegram Bot Token
+define('BOT_TOKEN', '7599565801:AAH4YdOmS_4tpnU8qIPhTMcDQGng9ak4HdM');
+define('API_URL', 'https://api.telegram.org/bot'.BOT_TOKEN.'/');
 
-// Function to send messages to Telegram with optional inline keyboard
-function sendMessage($chatId, $message, $botToken, $replyMarkup = null) {
-    $url = "https://api.telegram.org/bot$botToken/sendMessage";
-    $data = [
-        'chat_id' => $chatId,
-        'text' => $message,
-        'parse_mode' => 'HTML'
-    ];
-    
-    if ($replyMarkup) {
-        $data['reply_markup'] = json_encode($replyMarkup);
-    }
-    
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+// Function to send HTTP GET request
+function httpGet($url) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     $response = curl_exec($ch);
     curl_close($ch);
     return json_decode($response, true);
 }
 
-// Function to delete a message
-function deleteMessage($chatId, $messageId, $botToken) {
-    $url = "https://api.telegram.org/bot$botToken/deleteMessage";
-    $data = [
-        'chat_id' => $chatId,
-        'message_id' => $messageId
+// Function to send message to Telegram
+function sendMessage($chat_id, $text, $reply_to_message_id = null) {
+    $url = API_URL . "sendMessage";
+    $post_fields = [
+        'chat_id' => $chat_id,
+        'text' => $text,
+        'parse_mode' => 'HTML',
+        'reply_to_message_id' => $reply_to_message_id
     ];
-    
-    $ch = curl_init($url);
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_fields));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_exec($ch);
     curl_close($ch);
 }
 
-// Function to fetch player info from the API
-function fetchPlayerInfo($uid) {
-    $apiUrl = "https://nr-codex-info1.vercel.app/player-info?region=IND&uid=$uid";
-    $ch = curl_init($apiUrl);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Set timeout to avoid hanging
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($httpCode !== 200 || !$response) {
-        return false;
-    }
-    return json_decode($response, true);
+// Function to format timestamp to readable date
+function formatTimestamp($timestamp) {
+    return date("Y-m-d H:i:s", $timestamp);
 }
 
-// Function to convert Unix timestamp to formatted date
-function formatDate($timestamp) {
-    return $timestamp ? date("d F Y \a\t H:i:s", $timestamp) : "N/A";
+// Function to get player info
+function getPlayerInfo($uid, $region) {
+    $url = "https://nr-codex-info1.vercel.app/player-info?region=$region&uid=$uid";
+    return httpGet($url);
 }
 
-// Function to format rank (raw API values)
-function formatRank($rank, $points) {
-    if (!isset($rank, $points)) return "N/A";
-    return "$rank ($points)";
+// Function to get region info
+function getRegionInfo($uid) {
+    $url = "https://nr-codex-regioncheck-api.vercel.app/region-info/$uid";
+    return httpGet($url);
 }
 
-// Function to get pet name (raw API ID)
-function getPetName($petId) {
-    return $petId ?? "N/A";
+// Function to format player info response
+function formatPlayerInfo($data) {
+    $account = $data['AccountInfo'];
+    $pet = $data['petInfo'];
+    $guild = $data['GuildInfo'];
+    $leader = $data['captainBasicInfo'];
+    $credit = $data['creditScoreInfo'];
+    $profile = $data['AccountProfileInfo'];
+    $social = $data['socialinfo'];
+
+    $response = "👤 <b>Account Info</b>\n";
+    $response .= "├Name: {$account['AccountName']}\n";
+    $response .= "├🆔 UID: N/A\n";
+    $response .= "├🗿 Level: {$account['AccountLevel']}\n";
+    $response .= "├🚩 Region: {$account['AccountRegion']}\n";
+    $response .= "├❤️ Likes: {$account['AccountLikes']}\n";
+    $response .= "├🎖️ Title ID: {$account['Title']}\n";
+    $response .= "├🧷 Badge ID: {$account['AccountBPID']}\n";
+    $response .= "├🧠 Max Rank: {$account['BrMaxRank']}\n";
+    $response .= "├🥵 BR Rank: {$account['BrRankPoint']}\n";
+    $response .= "├🥶 CS Rank: {$account['CsMaxRank']}\n";
+    $response .= "├☠️ CS Points: {$account['CsRankPoint']}\n";
+    $response .= "├⏱️ Created At: " . formatTimestamp($account['AccountCreateTime']) . "\n";
+    $response .= "└⌛ Last Login: " . formatTimestamp($account['AccountLastLogin']) . "\n\n";
+
+    $response .= "🐾 <b>Pet Info</b>\n";
+    $response .= "├🐶 Pet ID: {$pet['id']}\n";
+    $response .= "├🎯 Skill ID: {$pet['selectedSkillId']}\n";
+    $response .= "├🎨 Skin ID: {$pet['skinId']}\n";
+    $response .= "├🎊 Level: {$pet['level']}\n";
+    $response .= "└✨ Exp: {$pet['exp']}\n\n";
+
+    $response .= "👥 <b>Guild Info</b>\n";
+    $response .= "├🗿 Name: {$guild['GuildName']}\n";
+    $response .= "├🆔 Guild ID: {$guild['GuildID']}\n";
+    $response .= "├🧬 Level: {$guild['GuildLevel']}\n";
+    $response .= "└👥 Members: {$guild['GuildMember']}/{$guild['GuildCapacity']}\n\n";
+
+    $response .= "👤 <b>Guild Leader Info</b>\n";
+    $response .= "├🗿 Name: {$leader['nickname']}\n";
+    $response .= "├🆔 UID: {$leader['accountId']}\n";
+    $response .= "├🧬 Level: {$leader['level']}\n";
+    $response .= "└❤️ LIKES: {$leader['liked']}\n\n";
+
+    $response .= "💠 <b>Credit Score</b>\n";
+    $response .= "├💯 Score: {$credit['creditScore']}\n";
+    $response .= "├🚦 Status: {$credit['rewardState']}\n";
+    $response .= "├📆 From: " . formatTimestamp($credit['periodicSummaryEndTime'] - 3*24*3600) . "\n";
+    $response .= "└⏳ Until: " . formatTimestamp($credit['periodicSummaryEndTime']) . "\n\n";
+
+    $response .= "👤 <b>Profile Info</b>\n";
+    $response .= "├🖼️ Avatar & Banner: Shown Graphically\n";
+    $response .= "├🧩 Character & Costume: Shown Graphically\n";
+    $response .= "├🎯 Skills: " . implode(", ", $profile['EquippedSkills']) . "\n";
+    $response .= "└🔫 Weapon Skins: " . (empty($leader['weaponSkinShows']) ? "N/A" : implode(", ", $leader['weaponSkinShows'])) . "\n\n";
+
+    $response .= "🌐 <b>Social Info</b>\n";
+    $response .= "├🌍 Language: {$social['language']}\n";
+    $response .= "├🙎 Gender: {$social['gender']}\n";
+    $response .= "├🔐 Privacy: " . ($social['rankShow'] == "RankShow_BR" ? "OPEN" : "CLOSED") . "\n";
+    $response .= "└📝 Bio: {$social['signature']}\n\n";
+
+    $response .= "🎗️ <b>BOT DEVELOPER</b>\n";
+    $response .= "└👑 @NR_CODEX";
+
+    return $response;
 }
 
-// Function to format the API response
-function formatResponse($data, $uid, $userMessage) {
-    $account = $data['AccountInfo'] ?? [];
-    $profile = $data['AccountProfileInfo'] ?? [];
-    $guild = $data['GuildInfo'] ?? [];
-    $captain = $data['captainBasicInfo'] ?? [];
-    $credit = $data['creditScoreInfo'] ?? [];
-    $pet = $data['petInfo'] ?? [];
-    $social = $data['socialinfo'] ?? [];
-
-    // Format skills (raw API values)
-    $skillsText = !empty($profile['EquippedSkills']) 
-        ? implode(", ", $profile['EquippedSkills'])
-        : "N/A";
-
-    // Format outfits
-    $outfitsText = !empty($profile['EquippedOutfit']) 
-        ? implode(", ", $profile['EquippedOutfit'])
-        : "N/A";
-
-    // Get current timestamp in IST
-    $ist = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
-    $timestamp = $ist->format('Y-m-d H:i:s');
-
-    // Build response
-    $message = "<b>Player Info for: <code>$userMessage</code></b>\n\n";
-    
-    $message .= "Account Info ≪\n";
-    $message .= "│ 👤 Name: " . ($account['AccountName'] ?? "N/A") . "\n";
-    $message .= "│ 🆔 UID: $uid\n";
-    $message .= "│ 🎮 Level: " . ($account['AccountLevel'] ?? "N/A") . "\n";
-    $message .= "│ 🌍 Region: " . ($account['AccountRegion'] ?? "N/A") . "\n";
-    $message .= "│ 👍 Likes: " . ($account['AccountLikes'] ?? "N/A") . "\n";
-    $message .= "│ 🏅 Honor Score: " . ($credit['creditScore'] ?? "N/A") . "\n";
-    $message .= "│ 🌟 Celebrity: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "False" : ($account['AccountType'] ? "True" : "N/A")) . "\n";
-    $message .= "│ 🔥 Elite Pass: " . (isset($account['AccountBPID']) && $account['AccountBPID'] ? "Yes" : "No") . "\n";
-    $message .= "│ 🎭 Title: " . ($account['Title'] ?? "N/A") . "\n";
-    $message .= "│ ✍️ Signature: " . ($social['AccountSignature'] ? str_replace("\n", "\n│     ", $social['AccountSignature']) : "N/A") . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Account Activity ≪\n";
-    $message .= "├─ 🔄 OB: " . ($account['ReleaseVersion'] ?? "N/A") . "\n";
-    $message .= "├─ 🎫 Fire Pass: " . (isset($account['AccountType']) && $account['AccountType'] == 1 ? "Free" : ($account['AccountType'] ? "Premium" : "N/A")) . "\n";
-    $message .= "├─ 🏆 BP Badges: " . ($account['AccountBPBadges'] ?? "N/A") . "\n";
-    $message .= "├─ 🆔 BP ID: " . ($account['AccountBPID'] ?? "N/A") . "\n";
-    $message .= "├─ 📈 BR Rank: " . formatRank($account['BrMaxRank'] ?? null, $account['BrRankPoint'] ?? null) . "\n";
-    $message .= "├─ 🎯 CS Points: " . ($account['CsRankPoint'] ?? "N/A") . "\n";
-    $message .= "├─ 📅 Created: " . formatDate($account['AccountCreateTime'] ?? null) . "\n";
-    $message .= "├─ ⏳ Last Login: " . formatDate($account['AccountLastLogin'] ?? null) . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Overview ≪\n";
-    $message .= "├─ 📌 Pin ID: " . ($account['AccountBannerId'] ? "Default" : "N/A") . "\n";
-    $message .= "├─ 👕 Outfits: $outfitsText\n";
-    $message .= "├─ ⚡ Skills: $skillsText\n";
-    $message .= "├─ 🔫 Guns: " . ($account['EquippedWeapon'][0] ?? "N/A") . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Pet Info ≪\n";
-    $message .= "├─ 🐾 Equipped: " . (isset($pet['isSelected']) && $pet['isSelected'] ? "Yes" : "No") . "\n";
-    $message .= "├─ 🐕 Name: " . getPetName($pet['id'] ?? null) . "\n";
-    $message .= "├─ 🦴 Type: " . getPetName($pet['id'] ?? null) . "\n";
-    $message .= "├─ 🎖️ EXP: " . ($pet['exp'] ?? "N/A") . "\n";
-    $message .= "├─ 🔼 Level: " . ($pet['level'] ?? "N/A") . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Guild ≪\n";
-    $message .= "├─ 🏰 Name: " . ($guild['GuildName'] ?? "N/A") . "\n";
-    $message .= "├─ 🆔 ID: " . ($guild['GuildID'] ?? "N/A") . "\n";
-    $message .= "├─ 🎖️ Level: " . ($guild['GuildLevel'] ?? "N/A") . "\n";
-    $message .= "├─ 👥 Members: " . ($guild['GuildMember'] ?? "N/A") . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Leader ≪\n";
-    $message .= "├─ 👑 Name: " . ($captain['nickname'] ?? "N/A") . "\n";
-    $message .= "├─ 🆔 UID: " . ($captain['accountId'] ?? "N/A") . "\n";
-    $message .= "├─ 🎮 Level: " . ($captain['level'] ?? "N/A") . "\n";
-    $message .= "├─ 📅 Created At: " . formatDate($captain['createAt'] ?? null) . "\n";
-    $message .= "├─ ⏳ Last Login: " . formatDate($captain['lastLoginAt'] ?? null) . "\n";
-    $message .= "├─ 🎭 Title: " . ($captain['title'] ?? "N/A") . "\n";
-    $message .= "├─ 🏆 Badges: " . ($captain['badgeCnt'] ?? "N/A") . "\n";
-    $message .= "├─ 📈 BR Points: " . formatRank($captain['maxRank'] ?? null, $captain['rankingPoints'] ?? null) . "\n";
-    $message .= "├─ 🎯 CS Points: " . ($captain['csRankingPoints'] ?? "N/A") . "\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "Bot Made By ≪\n";
-    $message .= "├─ 🎮 NR Codex\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "╭─≫ Join us ≪\n";
-    $message .= "├─ 📱 TELEGRAM GROUP: https://t.me/nr_codex_likegroup\n";
-    $message .= "├─ 📸 INSTAGRAM: https://www.instagram.com/nr_codex?igsh=MjZlZWo2cGd3bDVk\n";
-    $message .= "╰───────────────\n\n";
-
-    $message .= "🕒 Fetched at (IST): $timestamp IST";
-
-    // Inline keyboard markup
-    $replyMarkup = [
-        'inline_keyboard' => [
-            [
-                ['text' => 'TELEGRAM CHANNEL', 'url' => 'https://t.me/nr_codex'],
-                ['text' => 'YOUTUBE', 'url' => 'https://youtube.com/@nr_codex06?si=5pbP9qsDLfT4uTgf']
-            ]
-        ]
-    ];
-
-    return ['message' => $message, 'replyMarkup' => $replyMarkup];
+// Function to format region info response
+function formatRegionInfo($data) {
+    $response = "👤 <b>Region Info</b>\n";
+    $response .= "├🗿 Name: {$data['AccountName']}\n";
+    $response .= "├🆔 UID: N/A\n";
+    $response .= "├🧬 Level: {$data['AccountLevel']}\n";
+    $response .= "├🚩 Region: {$data['AccountRegion']}\n";
+    $response .= "├❤️ Likes: {$data['AccountLikes']}\n";
+    $response .= "├👥 Guild: {$data['GuildName']}\n";
+    $response .= "├📱 Version: {$data['ReleaseVersion']}\n";
+    $response .= "└⌛ Last Login: " . formatTimestamp($data['AccountLastLogin']) . "\n\n";
+    $response .= "🎗️ <b>BOT DEVELOPER</b>\n";
+    $response .= "└👑 @NR_CODEX";
+    return $response;
 }
 
-// Main logic to handle Telegram updates
+// Main bot logic
 $update = json_decode(file_get_contents("php://input"), true);
-
-// Check if the update contains a message
 if (isset($update['message'])) {
-    $chatId = $update['message']['chat']['id'];
-    $text = $update['message']['text'];
-    $messageId = $update['message']['message_id'];
+    $message = $update['message'];
+    $chat_id = $message['chat']['id'];
+    $text = $message['text'];
+    $reply_to_message_id = $message['message_id'];
 
-    // Check if the message starts with "Get" followed by a UID
-    if (preg_match('/^Get (\d+)$/', $text, $matches)) {
+    // Handle /get command
+    if (preg_match('/^\/get\s+(\d+)/i', $text, $matches)) {
         $uid = $matches[1];
 
-        // Send processing message
-        $processingMessage = sendMessage($chatId, "Fetching info for UID $uid, nickname <b>...</b> in IND...", $botToken);
-        $processingMessageId = $processingMessage['result']['message_id'] ?? null;
-
-        $playerData = fetchPlayerInfo($uid);
-
-        if ($playerData && isset($playerData['AccountInfo'])) {
-            // Update processing message with nickname
-            $nickname = $playerData['AccountInfo']['AccountName'] ?? "N/A";
-            deleteMessage($chatId, $processingMessageId, $botToken);
-            sendMessage($chatId, "Fetching info for UID $uid, nickname <b>$nickname</b> in IND...", $botToken);
-            sleep(1); // Brief delay to show processing message
-            deleteMessage($chatId, $processingMessageId + 1, $botToken);
-
-            // Format and send the full response
-            $response = formatResponse($playerData, $uid, $text);
-            sendMessage($chatId, $response['message'], $botToken, $response['replyMarkup']);
+        // First check region
+        $region_data = getRegionInfo($uid);
+        if (isset($region_data['AccountRegion'])) {
+            $region = $region_data['AccountRegion'];
+            // Try IND region first
+            $data = getPlayerInfo($uid, 'IND');
+            if (isset($data['error'])) {
+                // If IND fails, try BD region
+                $data = getPlayerInfo($uid, 'BD');
+            }
+            if (!isset($data['error'])) {
+                $response = formatPlayerInfo($data);
+                sendMessage($chat_id, $response, $reply_to_message_id);
+            } else {
+                sendMessage($chat_id, "Error: Unable to fetch player info for UID $uid", $reply_to_message_id);
+            }
         } else {
-            deleteMessage($chatId, $processingMessageId, $botToken);
-            sendMessage($chatId, "<b>Error:</b> Unable to fetch player data for UID $uid. Please check the UID or try again later.", $botToken);
+            sendMessage($chat_id, "Error: Unable to determine region for UID $uid", $reply_to_message_id);
         }
-    } else {
-        sendMessage($chatId, "<b>Invalid Format:</b> Please use the format: <code>Get <UID></code>", $botToken);
     }
-} else {
-    // Handle non-message updates or invalid requests
-    http_response_code(200); // Telegram expects a 200 OK response
-}
 
+    // Handle /region command
+    if (preg_match('/^\/region\s+(\d+)/i', $text, $matches)) {
+        $uid = $matches[1];
+        $data = getRegionInfo($uid);
+        if (isset($data['AccountName'])) {
+            $response = formatRegionInfo($data);
+            sendMessage($chat_id, $response, $reply_to_message_id);
+        } else {
+            sendMessage($chat_id, "Error: Unable to fetch region info for UID $uid", $reply_to_message_id);
+        }
+    }
+}
 ?>
