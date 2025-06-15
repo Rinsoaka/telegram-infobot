@@ -38,6 +38,15 @@ function formatTimestamp($timestamp) {
     return date("Y-m-d H:i:s", $timestamp);
 }
 
+// Function to get full region name with emoji
+function getRegionDisplay($region_code) {
+    $regions = [
+        'IND' => 'INDIA 🇮🇳',
+        'BD' => 'BANGLADESH 🇧🇩'
+    ];
+    return isset($regions[$region_code]) ? $regions[$region_code] : $region_code;
+}
+
 // Function to get player info
 function getPlayerInfo($uid, $region) {
     $url = "https://nr-codex-info1.vercel.app/player-info?region=$region&uid=$uid";
@@ -61,10 +70,10 @@ function formatPlayerInfo($data) {
     $social = $data['socialinfo'];
 
     $response = "👤 <b>Account Info</b>\n";
+    $response .= "├🚩 Region: " . getRegionDisplay($account['AccountRegion']) . "\n";
     $response .= "├Name: {$account['AccountName']}\n";
     $response .= "├🆔 UID: N/A\n";
     $response .= "├🗿 Level: {$account['AccountLevel']}\n";
-    $response .= "├🚩 Region: {$account['AccountRegion']}\n";
     $response .= "├❤️ Likes: {$account['AccountLikes']}\n";
     $response .= "├🎖️ Title ID: {$account['Title']}\n";
     $response .= "├🧷 Badge ID: {$account['AccountBPID']}\n";
@@ -121,10 +130,10 @@ function formatPlayerInfo($data) {
 // Function to format region info response
 function formatRegionInfo($data) {
     $response = "👤 <b>Region Info</b>\n";
+    $response .= "├🚩 Region: " . getRegionDisplay($data['AccountRegion']) . "\n";
     $response .= "├🗿 Name: {$data['AccountName']}\n";
     $response .= "├🆔 UID: N/A\n";
     $response .= "├🧬 Level: {$data['AccountLevel']}\n";
-    $response .= "├🚩 Region: {$data['AccountRegion']}\n";
     $response .= "├❤️ Likes: {$data['AccountLikes']}\n";
     $response .= "├👥 Guild: {$data['GuildName']}\n";
     $response .= "├📱 Version: {$data['ReleaseVersion']}\n";
@@ -143,27 +152,15 @@ if (isset($update['message'])) {
     $reply_to_message_id = $message['message_id'];
 
     // Handle /get command
-    if (preg_match('/^\/get\s+(\d+)/i', $text, $matches)) {
-        $uid = $matches[1];
-
-        // First check region
-        $region_data = getRegionInfo($uid);
-        if (isset($region_data['AccountRegion'])) {
-            $region = $region_data['AccountRegion'];
-            // Try IND region first
-            $data = getPlayerInfo($uid, 'IND');
-            if (isset($data['error'])) {
-                // If IND fails, try BD region
-                $data = getPlayerInfo($uid, 'BD');
-            }
-            if (!isset($data['error'])) {
-                $response = formatPlayerInfo($data);
-                sendMessage($chat_id, $response, $reply_to_message_id);
-            } else {
-                sendMessage($chat_id, "Error: Unable to fetch player info for UID $uid", $reply_to_message_id);
-            }
+    if (preg_match('/^\/get\s+([a-zA-Z]+)\s+(\d+)/i', $text, $matches)) {
+        $region = strtoupper($matches[1]); // Convert region to uppercase (e.g., ind -> IND)
+        $uid = $matches[2];
+        $data = getPlayerInfo($uid, $region);
+        if (!isset($data['error'])) {
+            $response = formatPlayerInfo($data);
+            sendMessage($chat_id, $response, $reply_to_message_id);
         } else {
-            sendMessage($chat_id, "Error: Unable to determine region for UID $uid", $reply_to_message_id);
+            sendMessage($chat_id, "Error: Unable to fetch player info for UID $uid in region $region", $reply_to_message_id);
         }
     }
 
